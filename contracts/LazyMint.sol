@@ -1754,6 +1754,93 @@ library ECDSA {
 }
 
 /**
+ * @dev Interface of the ERC20 standard as defined in the EIP.
+ */
+interface IERC20 {
+    /**
+     * @dev Returns the amount of tokens in existence.
+     */
+    function totalSupply() external view returns (uint256);
+
+    /**
+     * @dev Returns the amount of tokens owned by `account`.
+     */
+    function balanceOf(address account) external view returns (uint256);
+
+    /**
+     * @dev Moves `amount` tokens from the caller's account to `recipient`.
+     *
+     * Returns a boolean value indicating whether the operation succeeded.
+     *
+     * Emits a {Transfer} event.
+     */
+    function transfer(address recipient, uint256 amount)
+        external
+        returns (bool);
+
+    /**
+     * @dev Returns the remaining number of tokens that `spender` will be
+     * allowed to spend on behalf of `owner` through {transferFrom}. This is
+     * zero by default.
+     *
+     * This value changes when {approve} or {transferFrom} are called.
+     */
+    function allowance(address owner, address spender)
+        external
+        view
+        returns (uint256);
+
+    /**
+     * @dev Sets `amount` as the allowance of `spender` over the caller's tokens.
+     *
+     * Returns a boolean value indicating whether the operation succeeded.
+     *
+     * IMPORTANT: Beware that changing an allowance with this method brings the risk
+     * that someone may use both the old and the new allowance by unfortunate
+     * transaction ordering. One possible solution to mitigate this race
+     * condition is to first reduce the spender's allowance to 0 and set the
+     * desired value afterwards:
+     * https://github.com/ethereum/EIPs/issues/20#issuecomment-263524729
+     *
+     * Emits an {Approval} event.
+     */
+    function approve(address spender, uint256 amount) external returns (bool);
+
+    /**
+     * @dev Moves `amount` tokens from `sender` to `recipient` using the
+     * allowance mechanism. `amount` is then deducted from the caller's
+     * allowance.
+     *
+     * Returns a boolean value indicating whether the operation succeeded.
+     *
+     * Emits a {Transfer} event.
+     */
+    function transferFrom(
+        address sender,
+        address recipient,
+        uint256 amount
+    ) external returns (bool);
+
+    /**
+     * @dev Emitted when `value` tokens are moved from one account (`from`) to
+     * another (`to`).
+     *
+     * Note that `value` may be zero.
+     */
+    event Transfer(address indexed from, address indexed to, uint256 value);
+
+    /**
+     * @dev Emitted when the allowance of a `spender` for an `owner` is set by
+     * a call to {approve}. `value` is the new allowance.
+     */
+    event Approval(
+        address indexed owner,
+        address indexed spender,
+        uint256 value
+    );
+}
+
+/**
  * @dev https://eips.ethereum.org/EIPS/eip-712[EIP 712] is a standard for hashing and signing of typed structured data.
  *
  * The encoding specified in the EIP is very generic, and such a generic implementation in Solidity is not feasible,
@@ -1872,86 +1959,211 @@ abstract contract EIP712 {
     }
 }
 
-interface IMarkeplace{
-    function setRoyaltyData(uint256 _tokenId, uint256 _royaltyPercentage, address _royaltyOwner) external;
+/**
+ * @dev The contract has an owner address, and provides basic authorization control whitch
+ * simplifies the implementation of user permissions. This contract is based on the source code at:
+ * https://github.com/OpenZeppelin/openzeppelin-solidity/blob/master/contracts/ownership/Ownable.sol
+ */
+contract Ownable {
+    /**
+     * @dev Error constants.
+     */
+    string public constant NOT_CURRENT_OWNER = "018001";
+    string public constant CANNOT_TRANSFER_TO_ZERO_ADDRESS = "018002";
+
+    /**
+     * @dev Current owner address.
+     */
+    address public owner;
+    mapping(address => uint256[]) tokensowned;
+    /**
+     * @dev An event which is triggered when the owner is changed.
+     * @param previousOwner The address of the previous owner.
+     * @param newOwner The address of the new owner.
+     */
+    event OwnershipTransferred(
+        address indexed previousOwner,
+        address indexed newOwner
+    );
+
+    /**
+     * @dev The constructor sets the original `owner` of the contract to the sender account.
+     */
+    constructor() {
+        owner = msg.sender;
+    }
+
+    /**
+     * @dev Throws if called by any account other than the owner.
+     */
+    modifier onlyOwner() {
+        require(msg.sender == owner, NOT_CURRENT_OWNER);
+        _;
+    }
+
+    /**
+     * @dev Allows the current owner to transfer control of the contract to a newOwner.
+     * @param _newOwner The address to transfer ownership to.
+     */
+    function transferOwnership(address _newOwner) public onlyOwner {
+        require(_newOwner != address(0), CANNOT_TRANSFER_TO_ZERO_ADDRESS);
+        emit OwnershipTransferred(owner, _newOwner);
+        owner = _newOwner;
+    }
+
+    function _changeholder(
+        address from,
+        address _to,
+        uint256 tokenId
+    ) internal {
+        uint i = 0;
+        while (tokensowned[from][i] != tokenId) {
+            i++;
+        }
+
+        while (i < tokensowned[from].length - 1) {
+            tokensowned[from][i] = tokensowned[from][i + 1];
+            i++;
+        }
+        tokensowned[from].pop();
+        tokensowned[_to].push(tokenId);
+    }
 }
 
-contract ClubVirtualLazyNFT is ERC721URIStorage, EIP712, AccessControl {
+interface IMarketplace {
+    function setRoyaltyData(
+        uint256 _tokenId,
+        uint256 _royaltyPercentage,
+        address _royaltyOwner
+    ) external;
+}
+
+contract TabooNFT is ERC721URIStorage, EIP712, Ownable, AccessControl {
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
     string private constant SIGNING_DOMAIN = "ClubVirtual";
     string private constant SIGNATURE_VERSION = "1";
-    IMarkeplace public nftAuctionContract;
-    address owner;
+    address tabooToken;
+    uint256 tokenId;
 
+    IMarketplace public nftAuctionContract;
     mapping(address => uint256) pendingWithdrawals;
 
-    constructor(address payable minter, IMarkeplace _nftAuctionContract)
-    ERC721("ClubVirtual", "ClubVirtual")
-    EIP712(SIGNING_DOMAIN, SIGNATURE_VERSION){
+    constructor(
+        address payable minter,
+        address _tabooToken
+    )
+        ERC721("ClubVirtual", "ClubVirtual")
+        EIP712(SIGNING_DOMAIN, SIGNATURE_VERSION)
+    {
         _setupRole(MINTER_ROLE, minter);
-        nftAuctionContract = _nftAuctionContract;
-        owner= msg.sender;
+        tabooToken = _tabooToken;
     }
 
     struct NFTVoucher {
-        uint256 tokenId;
+        uint256 _tokenId;
         uint256 minPrice;
         string uri;
         bytes signature;
     }
 
     /// @notice Redeems an NFTVoucher for an actual NFT, creating it in the process.
-    function redeemOnAuctionEnd(
+    function redeem(
         address _redeemer,
         NFTVoucher calldata _voucher,
         address _creator,
         address _admin,
         uint256 _adminPercent,
         uint256 _royaltyPercentage,
-        uint256 platformPercentage
-    ) public payable returns (uint256) {
-
-        uint256 buyNowPrice= _voucher.minPrice;
-        uint256 platformFee= (buyNowPrice * platformPercentage)/10000;
-        uint totalPayable= buyNowPrice + platformFee; 
-        require(msg.value >= totalPayable, "Paid incorrect amount");
+        uint256 _platformPercentage,
+        address _ERC20Token
+    ) public returns (uint256) {
         // make sure signature is valid and get the address of the signer
         address signer = _verify(_voucher);
-        _mint(signer, _voucher.tokenId);
-        _setTokenURI(_voucher.tokenId, _voucher.uri);
-        // transfer the token to the _redeemer
-        _transfer(signer, _redeemer, _voucher.tokenId);
+        tokenId++;
+        _mint(signer, tokenId);
+        _setTokenURI(tokenId, _voucher.uri);
 
         // Record royaltyPercentage in marketplace contract
-        nftAuctionContract.setRoyaltyData(_voucher.tokenId, _royaltyPercentage, _creator);
-        // record payment to signer's withdrawal balance
-        pendingWithdrawals[signer] += msg.value;
+        nftAuctionContract.setRoyaltyData(
+            _voucher._tokenId,
+            _royaltyPercentage,
+            signer
+        );
 
-        totalPayable -= platformFee;
+        uint buyNowPrice = _voucher.minPrice;
+        uint256 platformFee = (buyNowPrice * _platformPercentage) / 10000;
         uint256 adminAmount = (buyNowPrice * _adminPercent) / 10000;
-        totalPayable -= adminAmount;
-        uint256 adminFees= adminAmount + platformFee;
-        payable(_creator).transfer(totalPayable);
-        payable(_admin).transfer(adminFees);
-        return _voucher.tokenId;
+        uint256 adminFees = adminAmount + platformFee;
+        buyNowPrice -= adminAmount;
+
+        if (_creator == address(0)) {
+            uint256 totalFees = adminFees + buyNowPrice;
+            IERC20(_ERC20Token).transferFrom(msg.sender, _admin, totalFees);
+        } else {
+            IERC20(_ERC20Token).transferFrom(msg.sender, _admin, adminFees);
+            IERC20(_ERC20Token).transferFrom(msg.sender, signer, buyNowPrice);
+        }
+        // transfer the token to the _redeemer
+        _transfer(signer, _redeemer, tokenId);
+        // record payment to signer's withdrawal balance
+        pendingWithdrawals[signer] += buyNowPrice;
+
+        return _voucher._tokenId;
     }
 
-    function setNewOwner(address _owner) public{
-        require(msg.sender== owner, "Only owner");
-        owner= _owner;
+    function mint(
+        address _to,
+        uint256 _amount,
+        string memory _uri
+    ) external {
+        require(
+            msg.sender == address(nftAuctionContract),
+            "Only Marketplace allowed"
+        );
+        uint256 n = _amount;
+        uint j;
+        for (j = 1; j <= n; j++) {
+            tokenId += 1;
+            _mint(_to, tokenId);
+            _setTokenURI(tokenId, _uri);
+            tokensowned[_to].push(tokenId);
+        }
+    }
+
+    function tokensOwned(address holder)
+        external
+        view
+        returns (uint256[] memory)
+    {
+        return tokensowned[holder];
+    }
+
+    function setTokenURI(uint256 _tokenId, string memory _uri) external {
+        _setTokenURI(_tokenId, _uri);
+    }
+
+    function setMarketplaceContract(IMarketplace _nftAuctionContract) public onlyOwner {
+        nftAuctionContract= _nftAuctionContract;
     }
 
     function contractSafeTransferFrom(
         address _from,
         address _to,
         uint _tokenId
-    ) external{
-        require(msg.sender == address(nftAuctionContract), "Only Auction contract");
+    ) external {
+        require(
+            msg.sender == address(nftAuctionContract),
+            "Only Auction contract"
+        );
         super._contractSafeTransferFrom(_from, _to, _tokenId);
     }
 
     function getetherbalance() public view returns (uint) {
         return address(this).balance;
+    }
+
+    function totalSupply() public view returns (uint256) {
+        return tokenId;
     }
 
     receive() external payable {}
@@ -1969,7 +2181,7 @@ contract ClubVirtualLazyNFT is ERC721URIStorage, EIP712, AccessControl {
         uint amount = pendingWithdrawals[receiver];
         // zero account before transfer to prevent re-entrancy attack
         pendingWithdrawals[receiver] = 0;
-        receiver.transfer(amount);
+        IERC20(tabooToken).transfer(receiver, amount);
     }
 
     /// @notice Retuns the amount of Ether available to the caller to withdraw.
@@ -1991,7 +2203,7 @@ contract ClubVirtualLazyNFT is ERC721URIStorage, EIP712, AccessControl {
                         keccak256(
                             "NFTVoucher(uint256 tokenId,uint256 minPrice,string uri)"
                         ),
-                        voucher.tokenId,
+                        voucher._tokenId,
                         voucher.minPrice,
                         keccak256(bytes(voucher.uri))
                     )

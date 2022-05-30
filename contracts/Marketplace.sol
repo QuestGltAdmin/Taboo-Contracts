@@ -30,6 +30,8 @@ interface IERC20 {
      * @dev Returns the remaining number of tokens that `spender` will be
      * allowed to spend on behalf of `owner` through {transferFrom}. This is
      * zero by default.
+     *
+     * This value changes when {approve} or {transferFrom} are called.
      */
     function allowance(address owner, address spender)
         external
@@ -40,7 +42,16 @@ interface IERC20 {
      * @dev Sets `amount` as the allowance of `spender` over the caller's tokens.
      *
      * Returns a boolean value indicating whether the operation succeeded.
-    **/
+     *
+     * IMPORTANT: Beware that changing an allowance with this method brings the risk
+     * that someone may use both the old and the new allowance by unfortunate
+     * transaction ordering. One possible solution to mitigate this race
+     * condition is to first reduce the spender's allowance to 0 and set the
+     * desired value afterwards:
+     * https://github.com/ethereum/EIPs/issues/20#issuecomment-263524729
+     *
+     * Emits an {Approval} event.
+     */
     function approve(address spender, uint256 amount) external returns (bool);
 
     /**
@@ -110,6 +121,11 @@ pragma solidity ^0.8.0;
 /**
  * @dev Interface of the ERC165 standard, as defined in the
  * https://eips.ethereum.org/EIPS/eip-165[EIP].
+ *
+ * Implementers can declare support of contract interfaces, which can then be
+ * queried by others ({ERC165Checker}).
+ *
+ * For an implementation, see {ERC165}.
  */
 interface IERC165 {
     /**
@@ -117,6 +133,8 @@ interface IERC165 {
      * `interfaceId`. See the corresponding
      * https://eips.ethereum.org/EIPS/eip-165#how-interfaces-are-identified[EIP section]
      * to learn more about how these ids are created.
+     *
+     * This function call must use less than 30 000 gas.
      */
     function supportsInterface(bytes4 interfaceId) external view returns (bool);
 }
@@ -166,17 +184,22 @@ interface IERC721 is IERC165 {
      */
     function ownerOf(uint256 tokenId) external view returns (address owner);
 
-    function mint(
-        address _to,
-        uint256 no_of_tokens_to_create,
-        string calldata _uri
-    ) external;
+    function mint(address _to, uint256 _amount, string memory _uri) external;
 
     function tokensOwned(address holder) external returns (uint256[] memory);
 
     /**
      * @dev Safely transfers `tokenId` token from `from` to `to`, checking first that contract recipients
      * are aware of the ERC721 protocol to prevent tokens from being forever locked.
+     *
+     * Requirements:
+     *
+     * - `from` cannot be the zero address.
+     * - `to` cannot be the zero address.
+     * - `tokenId` token must exist and be owned by `from`.
+     * - If the caller is not `from`, it must be have been allowed to move this token by either {approve} or {setApprovalForAll}.
+     * - If `to` refers to a smart contract, it must implement {IERC721Receiver-onERC721Received}, which is called upon a safe transfer.
+     *
      * Emits a {Transfer} event.
      */
     function safeTransferFrom(
@@ -195,6 +218,14 @@ interface IERC721 is IERC165 {
      * @dev Transfers `tokenId` token from `from` to `to`.
      *
      * WARNING: Usage of this method is discouraged, use {safeTransferFrom} whenever possible.
+     *
+     * Requirements:
+     *
+     * - `from` cannot be the zero address.
+     * - `to` cannot be the zero address.
+     * - `tokenId` token must be owned by `from`.
+     * - If the caller is not `from`, it must be approved to move this token by either {approve} or {setApprovalForAll}.
+     *
      * Emits a {Transfer} event.
      */
     function transferFrom(
@@ -206,6 +237,14 @@ interface IERC721 is IERC165 {
     /**
      * @dev Gives permission to `to` to transfer `tokenId` token to another account.
      * The approval is cleared when the token is transferred.
+     *
+     * Only a single account can be approved at a time, so approving the zero address clears previous approvals.
+     *
+     * Requirements:
+     *
+     * - The caller must own the token or be an approved operator.
+     * - `tokenId` must exist.
+     *
      * Emits an {Approval} event.
      */
     function approve(address to, uint256 tokenId) external;
@@ -246,6 +285,15 @@ interface IERC721 is IERC165 {
 
     /**
      * @dev Safely transfers `tokenId` token from `from` to `to`.
+     *
+     * Requirements:
+     *
+     * - `from` cannot be the zero address.
+     * - `to` cannot be the zero address.
+     * - `tokenId` token must exist and be owned by `from`.
+     * - If the caller is not `from`, it must be approved to move this token by either {approve} or {setApprovalForAll}.
+     * - If `to` refers to a smart contract, it must implement {IERC721Receiver-onERC721Received}, which is called upon a safe transfer.
+     *
      * Emits a {Transfer} event.
      */
     function safeTransferFrom(
@@ -277,6 +325,13 @@ abstract contract Context {
  * @dev Contract module which provides a basic access control mechanism, where
  * there is an account (an owner) that can be granted exclusive access to
  * specific functions.
+ *
+ * By default, the owner account will be the one that deploys the contract. This
+ * can later be changed with {transferOwnership}.
+ *
+ * This module is used through inheritance. It will make available the modifier
+ * `onlyOwner`, which can be applied to your functions to restrict their use to
+ * the owner.
  */
 
 abstract contract Ownable is Context {
@@ -339,6 +394,19 @@ abstract contract Ownable is Context {
 
 /**
  * @dev Contract module that helps prevent reentrant calls to a function.
+ *
+ * Inheriting from `ReentrancyGuard` will make the {nonReentrant} modifier
+ * available, which can be applied to functions to make sure there are no nested
+ * (reentrant) calls to them.
+ *
+ * Note that because there is a single `nonReentrant` guard, functions marked as
+ * `nonReentrant` may not call one another. This can be worked around by making
+ * those functions `private`, and then adding `external` `nonReentrant` entry
+ * points to them.
+ *
+ * TIP: If you would like to learn more about reentrancy and alternative ways
+ * to protect against it, check out our blog post
+ * https://blog.openzeppelin.com/reentrancy-after-istanbul/[Reentrancy After Istanbul].
  */
 abstract contract ReentrancyGuard {
     // Booleans are more expensive than uint256 or any type that takes up a full
@@ -346,6 +414,12 @@ abstract contract ReentrancyGuard {
     // slot's contents, replace the bits taken up by the boolean, and then write
     // back. This is the compiler's defense against contract upgrades and
     // pointer aliasing, and it cannot be disabled.
+
+    // The values being non-zero value makes deployment a bit more expensive,
+    // but in exchange the refund on every call to nonReentrant will be lower in
+    // amount. Since refunds are capped to a percentage of the total
+    // transaction's gas, it is best to keep them low in cases like this one, to
+    // increase the likelihood of the full refund coming into effect.
     uint256 private constant _NOT_ENTERED = 1;
     uint256 private constant _ENTERED = 2;
 
@@ -379,11 +453,15 @@ abstract contract ReentrancyGuard {
 
 contract NFTAuction is Ownable, ReentrancyGuard {
     bool runInitialize;
-
-    address public platformNormalNFT;
     address public platformLazyNFT;
-
+    uint256 tabooPercentageCut; // 100 = 1%
     event SaleCreated(
+        uint indexed tokenID,
+        address nftContract,
+        address seller,
+        uint256 buyNowPrice
+    );
+    event Sale1155(
         uint indexed tokenID,
         address nftContract,
         address seller,
@@ -508,12 +586,12 @@ contract NFTAuction is Ownable, ReentrancyGuard {
 
     // One time set NFT token contract
     function initialize(
-        address _platformNormalNFT,
-        address _platformLazyNFT
+        address _platformLazyNFT,
+        uint256 _tabooPercentageCut
     ) public onlyOwner {
         require(runInitialize == false, "NFT contract already set");
-        platformNormalNFT = _platformNormalNFT;
         platformLazyNFT = _platformLazyNFT;
+        tabooPercentageCut= _tabooPercentageCut;
         runInitialize = true;
     }
 
@@ -566,6 +644,10 @@ contract NFTAuction is Ownable, ReentrancyGuard {
             "Number of NFTs not applicable"
         );
         _;
+    }
+
+    function setPlatformLazy(address _platformLazyNFT) public onlyOwner{
+        platformLazyNFT= _platformLazyNFT;
     }
 
     function setRoyaltyData(
@@ -627,7 +709,7 @@ contract NFTAuction is Ownable, ReentrancyGuard {
             );
         }
     }
-
+    
     function createNewNFTAuction(
         address _nftContractAddress,
         uint256 _tokenId,
@@ -636,59 +718,44 @@ contract NFTAuction is Ownable, ReentrancyGuard {
         uint32 _royaltyPercentage,
         uint32 _ownerPercentage,
         uint32 _platformPercentage,
-        uint256 _auctionBidPeriod,
+        uint256 _auctionEndTime,
         uint32 _bidIncreasePercentage,
         uint256 _auctionStartTime,
         string memory _uri
     ) public {
-        require(_auctionBidPeriod >= 600, "Min auction period is 10 min");
+        require(_auctionStartTime >= block.timestamp, "Start time of past");
+        require((_auctionEndTime - _auctionStartTime) >= 600, "Min auction period is 10 min");
         require(_minPrice > 0, "Price can't be zero");
         require(_bidIncreasePercentage >= 0, "Bid percentage less than 0");
 
         if (_nftContractAddress == address(0) && _tokenId == 0) {
-            IERC721(platformNormalNFT).mint(address(this), 1, _uri); // mint to this contract
-            uint[] memory tokens = IERC721(platformNormalNFT).tokensOwned(
+            IERC721(platformLazyNFT).mint(address(this), 1, _uri); // mint to this contract
+            uint[] memory tokens = IERC721(platformLazyNFT).tokensOwned(
                 address(this)
             );
             uint tokenId = tokens[tokens.length - 1];
-            Auction storage auction = nftContractAuctions[platformNormalNFT][
-                tokenId
-            ];
-            nftContractAuctions[platformNormalNFT][tokenId]
-                .auctionBidPeriod = _auctionBidPeriod;
-            auction.bidIncreasePercentage = _bidIncreasePercentage;
-            auction.ownerPercentage = _ownerPercentage;
-            auction.platformPercentage = _platformPercentage;
-            nftRoyalty[platformNormalNFT][tokenId].royaltyOwner = msg.sender;
-            nftRoyalty[platformNormalNFT][tokenId]
+            nftRoyalty[platformLazyNFT][tokenId].royaltyOwner = msg.sender;
+            nftRoyalty[platformLazyNFT][tokenId]
                 .royaltyPercentage = _royaltyPercentage;
 
             _setupAuction(
-                platformNormalNFT,
+                platformLazyNFT,
                 tokenId,
                 _erc20Token,
                 _minPrice,
-                _auctionStartTime
+                _auctionStartTime,
+                _auctionEndTime,
+                _bidIncreasePercentage,
+                _ownerPercentage,
+                _platformPercentage
             );
             emit CreateAuction(
                 tokenId,
-                platformNormalNFT,
+                platformLazyNFT,
                 msg.sender,
                 _minPrice
             );
-        } else {
-            nftContractAuctions[_nftContractAddress][_tokenId]
-                .auctionBidPeriod = _auctionBidPeriod;
-
-            nftContractAuctions[_nftContractAddress][_tokenId]
-                .bidIncreasePercentage = _bidIncreasePercentage;
-
-            nftContractAuctions[_nftContractAddress][_tokenId]
-                .ownerPercentage = _ownerPercentage;
-
-            nftContractAuctions[_nftContractAddress][_tokenId]
-                .platformPercentage = _platformPercentage;
-
+        }else{
             if (
                 nftRoyalty[_nftContractAddress][_tokenId].royaltyOwner ==
                 address(0)
@@ -698,13 +765,35 @@ contract NFTAuction is Ownable, ReentrancyGuard {
                 nftRoyalty[_nftContractAddress][_tokenId]
                     .royaltyPercentage = _royaltyPercentage;
             }
-            _createNewNftAuction(
+            
+            if (_nftContractAddress == platformLazyNFT) {
+                // Sending the NFT to this contract
+                IERC721(_nftContractAddress).contractSafeTransferFrom(
+                    msg.sender,
+                    address(this),
+                    _tokenId
+                );
+            }
+            // If NFT not one of ours then it needs approval
+            else {
+                IERC721(_nftContractAddress).safeTransferFrom(
+                    msg.sender,
+                    address(this),
+                    _tokenId
+                );
+            }
+            _setupAuction(
                 _nftContractAddress,
                 _tokenId,
                 _erc20Token,
                 _minPrice,
-                _auctionStartTime
+                _auctionStartTime,
+                _auctionEndTime,
+                _bidIncreasePercentage,
+                _ownerPercentage,
+                _platformPercentage
             );
+
             emit CreateAuction(
                 _tokenId,
                 _nftContractAddress,
@@ -719,7 +808,11 @@ contract NFTAuction is Ownable, ReentrancyGuard {
         uint256 _tokenId,
         address _erc20Token,
         uint256 _minPrice,
-        uint256 _auctionStartTime
+        uint256 _auctionStartTime,
+        uint256 _auctionEndTime,
+        uint32 _bidIncreasePercentage,
+        uint32 _ownerPercentage,
+        uint32 _platformPercentage
     ) internal {
         if (_erc20Token != address(0)) {
             nftContractAuctions[_nftContractAddress][_tokenId]
@@ -728,48 +821,18 @@ contract NFTAuction is Ownable, ReentrancyGuard {
         nftContractAuctions[_nftContractAddress][_tokenId].minPrice = _minPrice;
         nftContractAuctions[_nftContractAddress][_tokenId].nftSeller = msg
             .sender;
-        nftContractAuctions[_nftContractAddress][_tokenId].auctionEnd =
-            nftContractAuctions[_nftContractAddress][_tokenId]
-                .auctionBidPeriod +
-            (block.timestamp);
-        nftContractAuctions[_nftContractAddress][_tokenId].auctionStartTime =
-            _auctionStartTime +
-            block.timestamp;
-    }
+        nftContractAuctions[_nftContractAddress][_tokenId].auctionEnd =_auctionEndTime; 
 
-    function _createNewNftAuction(
-        address _nftContractAddress,
-        uint256 _tokenId,
-        address _erc20Token,
-        uint256 _minPrice,
-        uint256 _auctionStartTime
-    ) internal {
-        if (
-            _nftContractAddress == platformNormalNFT ||
-            _nftContractAddress == platformLazyNFT
-        ) {
-            // Sending the NFT to this contract
-            IERC721(_nftContractAddress).contractSafeTransferFrom(
-                msg.sender,
-                address(this),
-                _tokenId
-            );
-        }
-        // If NFT not one of ours then it needs approval
-        else {
-            IERC721(_nftContractAddress).safeTransferFrom(
-                msg.sender,
-                address(this),
-                _tokenId
-            );
-        }
-        _setupAuction(
-            _nftContractAddress,
-            _tokenId,
-            _erc20Token,
-            _minPrice,
-            _auctionStartTime
-        );
+        nftContractAuctions[_nftContractAddress][_tokenId].auctionStartTime = _auctionStartTime;
+
+        nftContractAuctions[_nftContractAddress][_tokenId]
+            .bidIncreasePercentage = _bidIncreasePercentage;
+
+        nftContractAuctions[_nftContractAddress][_tokenId]
+            .ownerPercentage = _ownerPercentage;
+
+        nftContractAuctions[_nftContractAddress][_tokenId]
+            .platformPercentage = _platformPercentage;
     }
 
     function _updateHighestBid(
@@ -877,7 +940,6 @@ contract NFTAuction is Ownable, ReentrancyGuard {
     ) external priceGreaterThanZero(_buyNowPrice) {
         // If it's our own platform NFT
         if (
-            _nftContractAddress == platformNormalNFT ||
             _nftContractAddress == platformLazyNFT
         ) {
             IERC721(_nftContractAddress).contractSafeTransferFrom(
@@ -941,65 +1003,6 @@ contract NFTAuction is Ownable, ReentrancyGuard {
             );
         }
     }
-
-    function createSale(
-        address _erc20Token,
-        uint256 _buyNowPrice,
-        uint32 _ownerPercentage,
-        uint32 _platformPercentage,
-        uint32 _royaltyPercentage,
-        string memory _uri
-    ) external priceGreaterThanZero(_buyNowPrice) returns (uint256) {
-        IERC721(platformNormalNFT).mint(address(this), 1, _uri); // mint to this contract
-        // last token minted
-        uint[] memory tokens = IERC721(platformNormalNFT).tokensOwned(
-            address(this)
-        );
-        uint _tokenId = tokens[tokens.length - 1];
-
-        _setupSale(
-            address(platformNormalNFT),
-            _tokenId,
-            _erc20Token,
-            _ownerPercentage,
-            _platformPercentage,
-            _buyNowPrice,
-            _royaltyPercentage
-        );
-
-        emit SaleCreated(_tokenId, platformNormalNFT, msg.sender, _buyNowPrice);
-        return _tokenId;
-    }
-
-    function createBatchSale(
-        uint256[] memory _batchTokenPrice,
-        address _erc20Token,
-        uint32 _ownerPercentage,
-        uint32 _platformPercentage,
-        uint32 _royaltyPercentage,
-        string[] memory _uri
-    ) external batchWithinLimits(_batchTokenPrice.length) {
-        for (uint i = 0; i < _batchTokenPrice.length; i++) {
-            require(_batchTokenPrice[i] > 0, "price invalid");
-            IERC721(platformNormalNFT).mint(address(this), 1, _uri[i]); // mint to this contract
-            // last token minted
-            uint[] memory tokens = IERC721(platformNormalNFT).tokensOwned(
-                address(this)
-            );
-            uint _tokenId = tokens[tokens.length - 1];
-
-            _setupSale(
-                address(platformNormalNFT),
-                _tokenId,
-                _erc20Token,
-                _ownerPercentage,
-                _platformPercentage,
-                _batchTokenPrice[i],
-                _royaltyPercentage
-            );
-        }
-    }
-
 
     function buyNFT(address _nftContractAddress, uint256 _tokenId)
         public
@@ -1080,8 +1083,8 @@ contract NFTAuction is Ownable, ReentrancyGuard {
             }
             totalAmount -= ownerAmount; // this is what seller gets
             address owner = owner();
-            IERC20(erc20Token).transferFrom(msg.sender, owner, platformFees);
-            IERC20(erc20Token).transferFrom(msg.sender, owner, ownerAmount);
+            uint256 adminFees= platformFees+ ownerAmount;
+            IERC20(erc20Token).transferFrom(msg.sender, owner, adminFees);
             IERC20(erc20Token).transferFrom(msg.sender, seller, totalAmount);
         } else {
             uint totalAmount = msg.value;
@@ -1320,7 +1323,7 @@ contract NFTAuction is Ownable, ReentrancyGuard {
 
         if (_isERC20Auction(erc20Token)) {
             // if sale is ERC20
-            uint totalAmount = _highestBid;
+            uint totalAmount = _highestBid - ((_highestBid * tabooPercentageCut)/10000);
             // 1. Cut platform fees from the buyer
             uint256 platformFees = (totalAmount * (platformPercentage)) /
                 (10000);
@@ -1338,8 +1341,7 @@ contract NFTAuction is Ownable, ReentrancyGuard {
                 // 3. Cut Royaltypercentage
                 royaltyAmount = (totalAmount * (_royaltyPercentage)) / (10000);
                 totalAmount -= royaltyAmount;
-                IERC20(erc20Token).transferFrom(
-                    msg.sender,
+                IERC20(erc20Token).transfer(
                     royaltyOwner,
                     royaltyAmount
                 );
@@ -1348,10 +1350,9 @@ contract NFTAuction is Ownable, ReentrancyGuard {
             }
             totalAmount -= ownerAmount;
             address owner = owner();
-            IERC20(erc20Token).transferFrom(msg.sender, owner, platformFees);
-            IERC20(erc20Token).transferFrom(msg.sender, owner, ownerAmount);
-            IERC20(erc20Token).transferFrom(
-                msg.sender,
+            uint256 adminFees= platformFees + ownerAmount;
+            IERC20(erc20Token).transfer(owner, adminFees);
+            IERC20(erc20Token).transfer(
                 _nftSeller,
                 totalAmount
             );
@@ -1399,6 +1400,7 @@ contract NFTAuction is Ownable, ReentrancyGuard {
 
     function settleAuction(address _nftContractAddress, uint256 _tokenId)
         external
+        // payable
         nonReentrant
         isAuctionOver(_nftContractAddress, _tokenId)
     {
@@ -1454,7 +1456,7 @@ contract NFTAuction is Ownable, ReentrancyGuard {
         uint32 _royaltyPercentage,
         uint32 _ownerPercentage,
         uint32 _platformPercentage,
-        uint256 _auctionBidPeriod,
+        uint256 _auctionEndTime,
         uint32 _bidIncreasePercentage,
         uint256 _auctionStartTime
     ) public {
@@ -1464,18 +1466,6 @@ contract NFTAuction is Ownable, ReentrancyGuard {
         // Reset Sale
         _resetSale(_nftContractAddress, _tokenId);
         // Setup Auction
-        nftContractAuctions[_nftContractAddress][_tokenId]
-            .auctionBidPeriod = _auctionBidPeriod;
-
-        nftContractAuctions[_nftContractAddress][_tokenId]
-            .bidIncreasePercentage = _bidIncreasePercentage;
-
-        nftContractAuctions[_nftContractAddress][_tokenId]
-            .ownerPercentage = _ownerPercentage;
-
-        nftContractAuctions[_nftContractAddress][_tokenId]
-            .platformPercentage = _platformPercentage;
-
         if (
             nftRoyalty[_nftContractAddress][_tokenId].royaltyOwner == address(0)
         ) {
@@ -1488,7 +1478,11 @@ contract NFTAuction is Ownable, ReentrancyGuard {
             _tokenId,
             _erc20Token,
             _minPrice,
-            _auctionStartTime
+            _auctionStartTime,
+            _auctionEndTime,
+            _bidIncreasePercentage,
+            _ownerPercentage,
+            _platformPercentage
         );
     }
 
@@ -1520,6 +1514,9 @@ contract NFTAuction is Ownable, ReentrancyGuard {
         address _nftRecipient = nftContractAuctions[_nftContractAddress][
             _tokenId
         ].nftSeller;
+        address auctionERC20Token = nftContractAuctions[_nftContractAddress][
+            _tokenId
+        ].ERC20Token;
 
         address prevNftHighestBidder = nftContractAuctions[_nftContractAddress][
             _tokenId
@@ -1537,9 +1534,14 @@ contract NFTAuction is Ownable, ReentrancyGuard {
         );
 
         // Pay any bidder if present
-        if (prevNftHighestBidder != address(0)) {
-            (bool success, ) = payable(prevNftHighestBidder).call{value: prevNftHighestBid}("");
-            require(success);
+       if(prevNftHighestBidder != address(0)){
+            if (_isERC20Auction(auctionERC20Token)) {
+                IERC20(auctionERC20Token).transfer(prevNftHighestBidder, prevNftHighestBid);
+            }
+            else{
+                (bool success, ) = payable(prevNftHighestBidder).call{value: prevNftHighestBid}("");
+                require(success);           
+            }
         }
     }
 
@@ -1594,24 +1596,8 @@ contract NFTAuction is Ownable, ReentrancyGuard {
         }
     }
 
-    function onERC1155Received(
-        address,
-        address,
-        uint256,
-        uint256,
-        bytes memory
-    ) public virtual returns (bytes4) {
-        return this.onERC1155Received.selector;
-    }
-
-    function onERC1155BatchReceived(
-        address,
-        address,
-        uint256[] memory,
-        uint256[] memory,
-        bytes memory
-    ) public virtual returns (bytes4) {
-        return this.onERC1155BatchReceived.selector;
+    function setTabooPercentageCut(uint256 _tabooPercentageCut) external onlyOwner{
+        tabooPercentageCut=_tabooPercentageCut;
     }
 
     function onERC721Received(
