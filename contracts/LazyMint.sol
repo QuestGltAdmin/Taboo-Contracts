@@ -2085,7 +2085,7 @@ contract TabooNFT is ERC721URIStorage, EIP712, Ownable, AccessControl {
 
         // Record royaltyPercentage in marketplace contract
         nftAuctionContract.setRoyaltyData(
-            _voucher._tokenId,
+            tokenId,
             _royaltyPercentage,
             signer
         );
@@ -2108,7 +2108,7 @@ contract TabooNFT is ERC721URIStorage, EIP712, Ownable, AccessControl {
         // record payment to signer's withdrawal balance
         pendingWithdrawals[signer] += buyNowPrice;
 
-        return _voucher._tokenId;
+        return tokenId;
     }
 
     function mint(
