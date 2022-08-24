@@ -2040,19 +2040,17 @@ interface IMarketplace {
 
 contract TabooNFT is ERC721URIStorage, EIP712, Ownable, AccessControl {
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
-    string private constant SIGNING_DOMAIN = "ClubVirtual";
+    string private constant SIGNING_DOMAIN = "TabooNFT";
     string private constant SIGNATURE_VERSION = "1";
     address tabooToken;
     uint256 tokenId;
-
     IMarketplace public nftAuctionContract;
-    mapping(address => uint256) pendingWithdrawals;
 
     constructor(
         address payable minter,
         address _tabooToken
     )
-        ERC721("ClubVirtual", "ClubVirtual")
+        ERC721("TabooNFT", "Taboo")
         EIP712(SIGNING_DOMAIN, SIGNATURE_VERSION)
     {
         _setupRole(MINTER_ROLE, minter);
@@ -2079,6 +2077,7 @@ contract TabooNFT is ERC721URIStorage, EIP712, Ownable, AccessControl {
     ) public returns (uint256) {
         // make sure signature is valid and get the address of the signer
         address signer = _verify(_voucher);
+        require(signer != _redeemer, "Cannot buy own NFT");
         tokenId++;
         _mint(signer, tokenId);
         _setTokenURI(tokenId, _voucher.uri);
@@ -2090,11 +2089,11 @@ contract TabooNFT is ERC721URIStorage, EIP712, Ownable, AccessControl {
             signer
         );
 
-        uint buyNowPrice = _voucher.minPrice;
-        uint256 platformFee = (buyNowPrice * _platformPercentage) / 10000;
-        uint256 adminAmount = (buyNowPrice * _adminPercent) / 10000;
+        uint buyNowPrice = _voucher.minPrice; 
+        uint256 platformFee = (buyNowPrice * _platformPercentage) / 10000; 
+        uint256 adminAmount = (buyNowPrice * _adminPercent) / 10000;  
         uint256 adminFees = adminAmount + platformFee;
-        buyNowPrice -= adminAmount;
+        buyNowPrice -= (adminAmount);
 
         if (_creator == address(0)) {
             uint256 totalFees = adminFees + buyNowPrice;
@@ -2105,9 +2104,6 @@ contract TabooNFT is ERC721URIStorage, EIP712, Ownable, AccessControl {
         }
         // transfer the token to the _redeemer
         _transfer(signer, _redeemer, tokenId);
-        // record payment to signer's withdrawal balance
-        pendingWithdrawals[signer] += buyNowPrice;
-
         return tokenId;
     }
 
@@ -2167,27 +2163,6 @@ contract TabooNFT is ERC721URIStorage, EIP712, Ownable, AccessControl {
     }
 
     receive() external payable {}
-
-    /// @notice Transfers all pending withdrawal balance to the caller. Reverts if the caller is not an authorized minter.
-    function withdraw() public {
-        require(
-            hasRole(MINTER_ROLE, msg.sender),
-            "Only authorized minters can withdraw"
-        );
-
-        // IMPORTANT: casting msg.sender to a payable address is only safe if ALL members of the minter role are payable addresses.
-        address payable receiver = payable(msg.sender);
-
-        uint amount = pendingWithdrawals[receiver];
-        // zero account before transfer to prevent re-entrancy attack
-        pendingWithdrawals[receiver] = 0;
-        IERC20(tabooToken).transfer(receiver, amount);
-    }
-
-    /// @notice Retuns the amount of Ether available to the caller to withdraw.
-    function availableToWithdraw() public view returns (uint256) {
-        return pendingWithdrawals[msg.sender];
-    }
 
     /// @notice Returns a hash of the given NFTVoucher, prepared using EIP712 typed data hashing rules.
     /// @param voucher An NFTVoucher to hash.

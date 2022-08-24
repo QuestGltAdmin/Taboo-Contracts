@@ -454,7 +454,7 @@ abstract contract ReentrancyGuard {
 contract NFTAuction is Ownable, ReentrancyGuard {
     bool runInitialize;
     address public platformLazyNFT;
-    uint256 tabooPercentageCut; // 100 = 1%
+    uint256 public tabooPercentageCut; // 100 = 1%
     event SaleCreated(
         uint indexed tokenID,
         address nftContract,
@@ -849,6 +849,7 @@ contract NFTAuction is Ownable, ReentrancyGuard {
         if (_isERC20Auction(auctionERC20Token)) {
             nftContractAuctions[_nftContractAddress][_tokenId]
                 .nftHighestBid = _tokenAmount;
+
             IERC20(auctionERC20Token).transferFrom(
                 msg.sender,
                 address(this),
@@ -1109,7 +1110,7 @@ contract NFTAuction is Ownable, ReentrancyGuard {
                 // 3. Cut Royaltypercentage
                 royaltyAmount = (buyNowPrice * (_royaltyPercentage)) / (10000);
                 totalAmount -= royaltyAmount;
-                payable(royaltyOwner).transfer(royaltyAmount);
+                (bool success, )= payable(royaltyOwner).call{value: royaltyAmount}("");
             } else {
                 nftRoyalty[_nftContractAddress][_tokenId].activated = true;
             }
@@ -1215,7 +1216,7 @@ contract NFTAuction is Ownable, ReentrancyGuard {
         address _nftContractAddress,
         uint256 _tokenId,
         address _erc20Token,
-        uint256 _tokenAmount
+        uint256 _tokenAmount    // 100000000000 = 100 taboo
     )
         internal
         notNftSeller(_nftContractAddress, _tokenId)
@@ -1292,7 +1293,7 @@ contract NFTAuction is Ownable, ReentrancyGuard {
             _tokenId
         ].ERC20Token;
         if (_isERC20Auction(auctionERC20Token)) {
-            // pay royalty owner
+            _amount = _amount - (_amount * tabooPercentageCut)/10000;
             IERC20(auctionERC20Token).transfer(_recipient, _amount);
         } else {
             // attempt to send the funds to the recipient
@@ -1323,11 +1324,11 @@ contract NFTAuction is Ownable, ReentrancyGuard {
 
         if (_isERC20Auction(erc20Token)) {
             // if sale is ERC20
-            uint totalAmount = _highestBid - ((_highestBid * tabooPercentageCut)/10000);
+            uint totalAmount = _highestBid - (_highestBid * tabooPercentageCut)/10000;
             // 1. Cut platform fees from the buyer
             uint256 platformFees = (totalAmount * (platformPercentage)) /
                 (10000);
-            // // 2. Cut ownerAmount from Seller
+            // 2. Cut ownerAmount from Seller
             uint256 ownerAmount = (totalAmount * (_ownerPercentage)) / (10000);
             uint royaltyAmount;
             // Reset Sale Data
@@ -1349,6 +1350,7 @@ contract NFTAuction is Ownable, ReentrancyGuard {
                 nftRoyalty[_nftContractAddress][_tokenId].activated = true;
             }
             totalAmount -= ownerAmount;
+            totalAmount -= platformFees;
             address owner = owner();
             uint256 adminFees= platformFees + ownerAmount;
             IERC20(erc20Token).transfer(owner, adminFees);
@@ -1357,7 +1359,6 @@ contract NFTAuction is Ownable, ReentrancyGuard {
                 totalAmount
             );
         } else {
-            // uint totalAmount = _highestBid + msg.value;
             uint totalAmount = _highestBid;
             // 1. Cut platform fees from the buyer
             uint256 platformFees = (_highestBid * (platformPercentage)) /
@@ -1385,9 +1386,12 @@ contract NFTAuction is Ownable, ReentrancyGuard {
             }
             address owner = owner();
             uint256 adminFees = ownerAmount + platformFees;
-            payable(owner).transfer(adminFees);
-            (bool success, ) = payable(_nftSeller).call{value: totalAmount}("");
+            (bool success, )= payable(owner).call{value: adminFees}("");
             if (!success) {
+                revert();
+            }
+            (bool _success, ) = payable(_nftSeller).call{value: totalAmount}("");
+            if (!_success) {
                 revert();
             }
         }
