@@ -183,7 +183,7 @@ interface IProviderPair {
     function token1() external view returns (address);
 }
 
-contract KarbunPresale is ReentrancyGuard, Ownable {
+contract TabooPresale is ReentrancyGuard, Ownable {
     using SafeMath for uint256;
 
     IERC20 public _token;
@@ -527,6 +527,26 @@ contract KarbunPresale is ReentrancyGuard, Ownable {
         return (exchangeRate);
     }
 
+    function getPriceDataDoge(IProviderPair _pairAddress)
+        public
+        view
+        returns (uint256)
+    {
+        uint112 reserve0;
+        uint112 reserve1;
+        uint32 timestamp;
+        uint256 exchangeRate;
+        (reserve0, reserve1, timestamp) = IProviderPair(_pairAddress)
+            .getReserves();
+        address token0 = IProviderPair(_pairAddress).token0();
+        if (token0 == address(_BUSD)) {
+            exchangeRate = (uint256((reserve0 * (10**9)) / reserve1));
+        } else {
+            exchangeRate = (uint256((reserve1 * (10**9)) / reserve0));
+        }
+        return (exchangeRate);
+    }
+
     function getTabooPrice()
         public
         view
@@ -575,7 +595,7 @@ contract KarbunPresale is ReentrancyGuard, Ownable {
     }
 
     function dogeRate() public view returns (uint256) {
-        uint256 dogerate = (getPriceData(BusdDoge).mul(getTabooPrice())).div(10**9);
+        uint256 dogerate = (getPriceDataDoge(BusdDoge).mul(getTabooPrice())).div(10**9);
         return (dogerate);
     }
 
